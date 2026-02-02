@@ -11,8 +11,8 @@ When debugging Claude Code or other MCP clients, you often need to check what
 environment variables are available. But dumping `env` risks exposing API keys,
 tokens, and passwords in logs or screenshots.
 
-- **Safe inspection**: Variables containing KEY, TOKEN, CRED, or PASS have
-  their values automatically redacted
+- **Safe inspection**: Variables with KEY, TOKEN, CRED, PASSWORD, or PASSPHRASE
+  at word boundaries have their values automatically redacted
 - **Preserves structure**: Special characters, hyphens, and underscores remain
   visible so you can see the shape of values
 - **Zero configuration**: Just add the server and call `debug_env`
@@ -57,8 +57,8 @@ ______________________________________________________________________
 
 ## Features
 
-- Redacts values for variables containing KEY, TOKEN, CRED, or PASS
-  (case-insensitive)
+- Redacts values for variables with KEY, TOKEN, CRED, PASSWORD, or PASSPHRASE
+  at word boundaries (case-insensitive)
 - Replaces only alphanumeric characters, preserving punctuation structure
 - Built on [FastMCP](https://gofastmcp.com) for easy integration
 - Runs over stdio transport

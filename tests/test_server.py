@@ -7,7 +7,12 @@ from unittest import mock
 
 import pytest
 
-from env_debug_mcp.server import _get_debug_env, _is_sensitive_key, _redact_value
+from env_debug_mcp.server import (
+    _get_debug_env,
+    _is_sensitive_key,
+    _redact_value,
+    debug_env,
+)
 
 
 class TestRedactValue:
@@ -38,12 +43,12 @@ class TestIsSensitiveKey:
         [
             "API_KEY",
             "api_key",
-            "ApiKey",
+            "KEY",
             "MY_SECRET_KEY",
         ],
     )
     def test_matches_key_pattern(self, key: str) -> None:
-        """Keys containing KEY (case-insensitive) should be sensitive."""
+        """Keys with KEY as a word boundary should be sensitive."""
         assert _is_sensitive_key(key) is True
 
     @pytest.mark.parametrize(
@@ -51,12 +56,12 @@ class TestIsSensitiveKey:
         [
             "ACCESS_TOKEN",
             "access_token",
-            "AccessToken",
+            "TOKEN",
             "GITHUB_TOKEN",
         ],
     )
     def test_matches_token_pattern(self, key: str) -> None:
-        """Keys containing TOKEN (case-insensitive) should be sensitive."""
+        """Keys with TOKEN as a word boundary should be sensitive."""
         assert _is_sensitive_key(key) is True
 
     @pytest.mark.parametrize(
@@ -64,11 +69,12 @@ class TestIsSensitiveKey:
         [
             "AWS_CREDENTIALS",
             "CREDENTIAL_PATH",
+            "CRED",
             "credentials",
         ],
     )
     def test_matches_cred_pattern(self, key: str) -> None:
-        """Keys containing CRED (case-insensitive) should be sensitive."""
+        """Keys with CRED at a start boundary should be sensitive."""
         assert _is_sensitive_key(key) is True
 
     @pytest.mark.parametrize(
@@ -76,12 +82,13 @@ class TestIsSensitiveKey:
         [
             "PASSWORD",
             "DB_PASSWORD",
-            "password",
+            "PASS",
             "PASSPHRASE",
+            "password",
         ],
     )
     def test_matches_pass_pattern(self, key: str) -> None:
-        """Keys containing PASS (case-insensitive) should be sensitive."""
+        """Keys with PASSWORD/PASSPHRASE or PASS at word boundaries."""
         assert _is_sensitive_key(key) is True
 
     @pytest.mark.parametrize(
@@ -92,10 +99,14 @@ class TestIsSensitiveKey:
             "USER",
             "SHELL",
             "HOSTNAME",
+            "COMPASS",
+            "MONKEY",
+            "PASSPORT_NUMBER",
+            "SUBTOKEN_ID",
         ],
     )
     def test_non_sensitive_keys(self, key: str) -> None:
-        """Non-sensitive keys should return False."""
+        """Keys without sensitive patterns at word boundaries should not match."""
         assert _is_sensitive_key(key) is False
 
 
@@ -108,8 +119,7 @@ class TestGetDebugEnv:
             "API_KEY": "secret123",
             "HOME": "/home/user",
         }
-        with mock.patch.dict(os.environ, test_env, clear=True):
-            result = _get_debug_env()
+        result = _get_debug_env(test_env)
 
         assert result["API_KEY"] == "*********"
         assert result["HOME"] == "/home/user"
@@ -120,8 +130,7 @@ class TestGetDebugEnv:
             "PATH": "/usr/bin:/bin",
             "SHELL": "/bin/bash",
         }
-        with mock.patch.dict(os.environ, test_env, clear=True):
-            result = _get_debug_env()
+        result = _get_debug_env(test_env)
 
         assert result["PATH"] == "/usr/bin:/bin"
         assert result["SHELL"] == "/bin/bash"
@@ -129,8 +138,7 @@ class TestGetDebugEnv:
     def test_returns_dict(self) -> None:
         """_get_debug_env should return a dictionary."""
         test_env = {"HOME": "/home/user"}
-        with mock.patch.dict(os.environ, test_env, clear=True):
-            result = _get_debug_env()
+        result = _get_debug_env(test_env)
 
         assert isinstance(result, dict)
 
@@ -142,10 +150,48 @@ class TestGetDebugEnv:
             "DB_PASSWORD": "pass789",
             "AWS_CREDENTIALS": "cred000",
         }
-        with mock.patch.dict(os.environ, test_env, clear=True):
-            result = _get_debug_env()
+        result = _get_debug_env(test_env)
 
         assert result["API_KEY"] == "******"
         assert result["ACCESS_TOKEN"] == "******"
         assert result["DB_PASSWORD"] == "*******"
         assert result["AWS_CREDENTIALS"] == "*******"
+
+    def test_defaults_to_os_environ(self) -> None:
+        """When no env is provided, should use os.environ."""
+        test_env = {"TEST_VAR": "value"}
+        with mock.patch.dict(os.environ, test_env, clear=True):
+            result = _get_debug_env()
+
+        assert result == {"TEST_VAR": "value"}
+
+    def test_does_not_match_embedded_patterns(self) -> None:
+        """Patterns embedded in larger words should not trigger redaction."""
+        test_env = {
+            "COMPASS": "north",
+            "MONKEY": "banana",
+            "PASSPORT_NUMBER": "AB123456",
+        }
+        result = _get_debug_env(test_env)
+
+        assert result["COMPASS"] == "north"
+        assert result["MONKEY"] == "banana"
+        assert result["PASSPORT_NUMBER"] == "AB123456"
+
+
+class TestDebugEnvTool:
+    """Tests for the public debug_env MCP tool."""
+
+    def test_delegates_to_get_debug_env(self) -> None:
+        """debug_env MCP tool should return the same mapping as _get_debug_env."""
+        test_env = {
+            "OPENAI_API_KEY": "super-secret-key",
+            "DATABASE_URL": "postgres://user:pass@localhost/db",
+            "NON_SENSITIVE_VAR": "visible",
+        }
+        with mock.patch.dict(os.environ, test_env, clear=True):
+            # Access the underlying function via the .fn attribute
+            result = debug_env.fn()
+            expected = _get_debug_env()
+
+        assert result == expected
