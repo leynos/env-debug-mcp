@@ -3,6 +3,12 @@
 Provides shared test fixtures for environment variable patching and other
 common test setup.
 
+Example usage::
+
+    def test_with_clean_env(patched_environ: os._Environ[str]) -> None:
+        patched_environ["MY_VAR"] = "value"
+        # os.environ now contains only MY_VAR
+
 """
 
 from __future__ import annotations
@@ -18,7 +24,7 @@ if typ.TYPE_CHECKING:
 
 
 @pytest.fixture
-def patched_environ() -> cabc.Generator[dict[str, str]]:
+def patched_environ() -> cabc.Generator[os._Environ[str]]:
     """Provide a clean, isolated environment for testing.
 
     Clears os.environ and yields it for direct manipulation. Changes made to
@@ -27,9 +33,9 @@ def patched_environ() -> cabc.Generator[dict[str, str]]:
 
     Yields
     ------
-    dict[str, str]
-        The os.environ dict, cleared and ready for test data.
+    os._Environ[str]
+        The os.environ object, cleared and ready for test data.
 
     """
     with mock.patch.dict(os.environ, clear=True):
-        yield os.environ  # type: ignore[misc]
+        yield os.environ
