@@ -18,21 +18,18 @@ from env_debug_mcp.server import (
 class TestRedactValue:
     """Tests for _redact_value function."""
 
-    def test_replaces_alphanumeric_with_asterisks(self) -> None:
-        """Alphanumeric characters should be replaced with asterisks."""
-        assert _redact_value("abc123") == "******"
-
-    def test_preserves_special_characters(self) -> None:
-        """Special characters should remain unchanged."""
-        assert _redact_value("key=value!") == "***=*****!"
-
-    def test_preserves_hyphens_and_underscores(self) -> None:
-        """Hyphens and underscores should remain unchanged."""
-        assert _redact_value("my_api-key") == "**_***-***"
-
-    def test_empty_string(self) -> None:
-        """Empty string should return empty string."""
-        assert _redact_value("") == ""
+    @pytest.mark.parametrize(
+        ("input_value", "expected"),
+        [
+            ("abc123", "******"),
+            ("key=value!", "***=*****!"),
+            ("my_api-key", "**_***-***"),
+            ("", ""),
+        ],
+    )
+    def test_redact_value(self, input_value: str, expected: str) -> None:
+        """Alphanumeric chars replaced with asterisks, special chars preserved."""
+        assert _redact_value(input_value) == expected
 
 
 class TestIsSensitiveKey:
@@ -94,6 +91,32 @@ class TestIsSensitiveKey:
     @pytest.mark.parametrize(
         "key",
         [
+            "SECRET",
+            "AWS_SECRET_KEY",
+            "SECRET_VALUE",
+            "my_secret",
+        ],
+    )
+    def test_matches_secret_pattern(self, key: str) -> None:
+        """Keys with SECRET at a word boundary should be sensitive."""
+        assert _is_sensitive_key(key) is True
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "AUTH",
+            "AUTH_TOKEN",
+            "BASIC_AUTH",
+            "authorization",
+        ],
+    )
+    def test_matches_auth_pattern(self, key: str) -> None:
+        """Keys with AUTH at a word boundary should be sensitive."""
+        assert _is_sensitive_key(key) is True
+
+    @pytest.mark.parametrize(
+        "key",
+        [
             "HOME",
             "PATH",
             "USER",
@@ -135,12 +158,12 @@ class TestGetDebugEnv:
         assert result["PATH"] == "/usr/bin:/bin"
         assert result["SHELL"] == "/bin/bash"
 
-    def test_returns_dict(self) -> None:
-        """_get_debug_env should return a dictionary."""
-        test_env = {"HOME": "/home/user"}
+    def test_returns_expected_content(self) -> None:
+        """_get_debug_env should return env with expected content."""
+        test_env = {"HOME": "/home/user", "SHELL": "/bin/bash"}
         result = _get_debug_env(test_env)
 
-        assert isinstance(result, dict)
+        assert result == test_env
 
     def test_handles_multiple_sensitive_patterns(self) -> None:
         """Multiple sensitive patterns should all be redacted."""
