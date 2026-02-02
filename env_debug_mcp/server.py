@@ -1,4 +1,19 @@
-"""MCP server for debugging environment variables."""
+"""MCP server for debugging environment variables.
+
+This module provides a FastMCP-based stdio server that exposes a `debug_env`
+tool for safely inspecting environment variables. Sensitive values (those
+containing KEY, TOKEN, CRED, SECRET, AUTH, PASSWORD, or PASSPHRASE) are
+automatically redacted to prevent accidental exposure of secrets.
+
+Example usage::
+
+    # Run as an MCP server
+    python -m env_debug_mcp.server
+
+    # Or via the installed entrypoint
+    env-debug-mcp
+
+"""
 
 from __future__ import annotations
 
@@ -29,29 +44,12 @@ def _redact_value(value: str) -> str:
 
 
 def _is_sensitive_key(key: str) -> bool:
-    """Check if environment variable key contains sensitive patterns.
-
-    Matches KEY, TOKEN, CRED, SECRET, AUTH, PASSWORD, or PASSPHRASE after
-    underscore or string start. Matches PASS only at complete word boundaries
-    to avoid false positives like COMPASS or PASSPORT.
-    """
+    """Check if key contains sensitive patterns at word boundaries."""
     return _SENSITIVE_PATTERN.search(key) is not None
 
 
-def _get_debug_env(
-    env: cabc.Mapping[str, str] | None = None,
-) -> dict[str, str]:
-    """Return environment variables with sensitive values redacted.
-
-    Args:
-        env: Environment mapping to process. Defaults to os.environ.
-
-    Returns:
-        Dictionary with sensitive values redacted. Variables with KEY, TOKEN,
-        CRED, SECRET, AUTH, PASSWORD, or PASSPHRASE in their name have
-        alphanumeric characters replaced with asterisks.
-
-    """
+def _get_debug_env(env: cabc.Mapping[str, str] | None = None) -> dict[str, str]:
+    """Return environment variables with sensitive values redacted."""
     if env is None:
         env = os.environ
     return {
@@ -66,12 +64,27 @@ def debug_env() -> dict[str, str]:
 
     Variables with KEY, TOKEN, CRED, SECRET, AUTH, PASSWORD, or PASSPHRASE at
     word boundaries have alphanumeric characters replaced with asterisks.
+
+    Returns
+    -------
+    dict[str, str]
+        Environment variables with sensitive values redacted.
+
     """
     return _get_debug_env()
 
 
 def main() -> None:
-    """Run the MCP server."""
+    """Run the MCP server.
+
+    Starts the FastMCP server with stdio transport, allowing MCP clients
+    to connect and invoke the debug_env tool.
+
+    Returns
+    -------
+    None
+
+    """
     mcp.run()
 
 
