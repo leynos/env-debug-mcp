@@ -31,9 +31,9 @@ def _redact_value(value: str) -> str:
 def _is_sensitive_key(key: str) -> bool:
     """Check if environment variable key contains sensitive patterns.
 
-    Matches KEY, TOKEN, CRED, PASSWORD, or PASSPHRASE after underscore or
-    string start. Matches PASS only at complete word boundaries to avoid
-    false positives like COMPASS or PASSPORT.
+    Matches KEY, TOKEN, CRED, SECRET, AUTH, PASSWORD, or PASSPHRASE after
+    underscore or string start. Matches PASS only at complete word boundaries
+    to avoid false positives like COMPASS or PASSPORT.
     """
     return _SENSITIVE_PATTERN.search(key) is not None
 
@@ -48,8 +48,8 @@ def _get_debug_env(
 
     Returns:
         Dictionary with sensitive values redacted. Variables with KEY, TOKEN,
-        CRED, PASSWORD, or PASSPHRASE in their name have alphanumeric
-        characters replaced with asterisks.
+        CRED, SECRET, AUTH, PASSWORD, or PASSPHRASE in their name have
+        alphanumeric characters replaced with asterisks.
 
     """
     if env is None:
@@ -64,8 +64,8 @@ def _get_debug_env(
 def debug_env() -> dict[str, str]:
     """Return environment variables with sensitive values redacted.
 
-    Variables with KEY, TOKEN, CRED, PASSWORD, or PASSPHRASE at word boundaries
-    have alphanumeric characters in their values replaced with asterisks.
+    Variables with KEY, TOKEN, CRED, SECRET, AUTH, PASSWORD, or PASSPHRASE at
+    word boundaries have alphanumeric characters replaced with asterisks.
     """
     return _get_debug_env()
 
