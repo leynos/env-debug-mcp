@@ -5,7 +5,7 @@ common test setup.
 
 Example usage::
 
-    def test_with_clean_env(patched_environ: os._Environ[str]) -> None:
+    def test_with_clean_env(patched_environ: cabc.MutableMapping[str, str]) -> None:
         patched_environ["MY_VAR"] = "value"
         # os.environ now contains only MY_VAR
 
@@ -24,7 +24,7 @@ if typ.TYPE_CHECKING:
 
 
 @pytest.fixture
-def patched_environ() -> cabc.Generator[os._Environ[str]]:
+def patched_environ() -> cabc.Generator[cabc.MutableMapping[str, str]]:
     """Provide a clean, isolated environment for testing.
 
     Clears os.environ and yields it for direct manipulation. Changes made to
@@ -33,7 +33,7 @@ def patched_environ() -> cabc.Generator[os._Environ[str]]:
 
     Yields
     ------
-    os._Environ[str]
+    collections.abc.MutableMapping[str, str]
         The os.environ object, cleared and ready for test data.
 
     """

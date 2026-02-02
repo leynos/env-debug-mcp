@@ -23,7 +23,7 @@ import typing as typ
 import pytest
 
 if typ.TYPE_CHECKING:
-    import os
+    import collections.abc as cabc
 
 from env_debug_mcp.server import (
     _get_debug_env,
@@ -222,7 +222,7 @@ class TestGetDebugEnv:
 
     def test_defaults_to_os_environ(
         self,
-        patched_environ: os._Environ[str],
+        patched_environ: cabc.MutableMapping[str, str],
     ) -> None:
         """When no env is provided, should use os.environ."""
         patched_environ["TEST_VAR"] = "value"
@@ -253,7 +253,7 @@ class TestDebugEnvTool:
 
     def test_delegates_to_get_debug_env(
         self,
-        patched_environ: os._Environ[str],
+        patched_environ: cabc.MutableMapping[str, str],
     ) -> None:
         """debug_env MCP tool should return the same mapping as _get_debug_env."""
         patched_environ["OPENAI_API_KEY"] = "super-secret-key"
