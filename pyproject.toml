@@ -13,7 +13,7 @@ env-debug-mcp = "env_debug_mcp.server:main"
 [dependency-groups]
 dev = [
     "pytest",
-    "ruff",
+    "ruff>=0.16.8",
     "pyright",
     "pytest-timeout",
     "pytest-xdist",
