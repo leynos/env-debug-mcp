@@ -44,6 +44,13 @@ and checks the canonical rule settings in `.markdownlint-cli2.jsonc` and Ruff's
 Markdown exclusion and version bound. PyYAML is a development dependency for
 that parsing.
 
+It also runs the real `mdtablefix` against a scratch Git repository with an
+unformatted Markdown file that is tracked, one that is untracked, and one that
+is ignored, to show that `make check-fmt` refuses the first two and not the
+third, and that `make fmt` wraps the first two and leaves the third alone.
+Those tests are skipped locally when `mdtablefix` is not installed, and fail
+when `CI` is set, so CI cannot stop running them.
+
 ## Python formatting and linting
 
 `make check-fmt` also runs `ruff format --check`, and `make lint` runs

@@ -10,6 +10,7 @@ is about.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import]
@@ -143,6 +144,127 @@ def test_a_missing_linter_fails_fmt_naming_it(tmp_path: Path) -> None:
     assert result.returncode != 0, "a missing linter did not fail make fmt"
     assert "'markdownlint-cli2' is required, but not installed" in result.stderr
     assert not calls, f"a tool ran before the missing linter was reported: {calls}"
+
+
+LONG_PARAGRAPH = (
+    "This paragraph is deliberately written as a single line that runs well past "
+    "the eighty column wrap limit, so that the formatter must rewrite it and the "
+    "check must refuse it until it has been rewritten.\n"
+)
+
+
+def _real_mdtablefix() -> str:
+    """Return the path of a real mdtablefix, or skip when it is not installed.
+
+    CI installs it before the tests run, so there a missing tool is a failure,
+    never a skip that would let these tests silently stop running.
+    """
+    found = shutil.which("mdtablefix")
+    if found is None and os.environ.get("CI"):
+        pytest.fail("mdtablefix must be installed in CI to run the end-to-end tests")
+    if found is None:
+        pytest.skip("mdtablefix is not installed")
+    return found
+
+
+def _git(repo: Path, *args: str) -> None:
+    """Run Git in `repo` with the ambient Git environment cleared."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    git = shutil.which("git")
+    assert git, "git must be installed to run these tests"
+    subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [git, *args], cwd=repo, env=env, check=True, capture_output=True, timeout=60
+    )
+
+
+def _markdown_repo(tmp_path: Path) -> Path:
+    """Build a Git repository with one unformatted Markdown file in each state.
+
+    `tracked.md` is staged, `untracked.md` is neither staged nor ignored, and
+    `ignored.md` is covered by `.gitignore`. All three hold the same long line.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    shutil.copy(ROOT / "Makefile", repo / "Makefile")
+    (repo / ".gitignore").write_text("ignored.md\n", encoding="utf-8")
+    for name in ("tracked.md", "untracked.md", "ignored.md"):
+        (repo / name).write_text(f"# Title\n\n{LONG_PARAGRAPH}", encoding="utf-8")
+    _git(repo, "init", "--quiet")
+    _git(repo, "add", ".gitignore", "Makefile", "tracked.md")
+    return repo
+
+
+def _make_in(
+    repo: Path, target: str, tmp_path: Path
+) -> subprocess.CompletedProcess[str]:
+    """Run `make <target>` with real ruff and mdtablefix and a no-op linter."""
+    mdtablefix = _real_mdtablefix()
+    ruff = shutil.which("ruff")
+    assert ruff, "ruff must be installed to run these tests"
+    linter = tmp_path / "markdownlint-cli2"
+    linter.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    linter.chmod(0o755)
+    make = shutil.which("make")
+    assert make, "make must be installed to run these tests"
+    path = os.pathsep.join(
+        sorted({
+            str(Path(mdtablefix).parent),
+            str(Path(ruff).parent),
+            "/usr/bin",
+            "/bin",
+        })
+    )
+    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [make, "--no-print-directory", f"MDLINT={linter}", target],
+        cwd=repo,
+        env={"PATH": path, "HOME": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+
+
+@pytest.mark.parametrize("name", ["tracked.md", "untracked.md"])
+def test_check_fmt_refuses_an_unformatted_eligible_file(
+    tmp_path: Path, name: str
+) -> None:
+    """`make check-fmt` fails for an unformatted tracked or untracked Markdown file."""
+    repo = _markdown_repo(tmp_path)
+    for other in {"tracked.md", "untracked.md"} - {name}:
+        (repo / other).write_text("# Title\n", encoding="utf-8")
+
+    result = _make_in(repo, "check-fmt", tmp_path)
+
+    assert result.returncode != 0, f"{name} was unformatted but check-fmt passed"
+
+
+def test_check_fmt_ignores_an_unformatted_ignored_file(tmp_path: Path) -> None:
+    """Git-ignored Markdown is not selected, so it cannot fail the check."""
+    repo = _markdown_repo(tmp_path)
+    for name in ("tracked.md", "untracked.md"):
+        (repo / name).write_text("# Title\n", encoding="utf-8")
+
+    result = _make_in(repo, "check-fmt", tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_fmt_rewrites_eligible_files_and_leaves_ignored_ones_alone(
+    tmp_path: Path,
+) -> None:
+    """`make fmt` wraps tracked and untracked files, after which the check passes."""
+    repo = _markdown_repo(tmp_path)
+    ignored_before = (repo / "ignored.md").read_text(encoding="utf-8")
+
+    result = _make_in(repo, "fmt", tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    for name in ("tracked.md", "untracked.md"):
+        lines = (repo / name).read_text(encoding="utf-8").splitlines()
+        assert max(len(line) for line in lines) <= 80, f"{name} was not wrapped"
+    assert (repo / "ignored.md").read_text(encoding="utf-8") == ignored_before
+    assert _make_in(repo, "check-fmt", tmp_path).returncode == 0
 
 
 def _workflow(name: str) -> dict[str, typ.Any]:
