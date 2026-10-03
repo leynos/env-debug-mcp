@@ -35,6 +35,15 @@ error that names it.
 
 `concordat artefact rule run markdown-formatting-baseline` audits this wiring.
 
+`tests/test_markdown_wiring.py` holds the wiring. It runs the real `make fmt`
+and `make check-fmt` against recording stubs, so the arguments, the order and
+the propagation of a failing tool's exit status are observed. It also parses
+the workflows as YAML to require an `install-mdtablefix` step at 0.6.1 or later
+before `make check-fmt` and `globs: '**/*.md'` under the lint action's `with:`,
+and checks the canonical rule settings in `.markdownlint-cli2.jsonc` and Ruff's
+Markdown exclusion and version bound. PyYAML is a development dependency for
+that parsing.
+
 ## Python formatting and linting
 
 `make check-fmt` also runs `ruff format --check`, and `make lint` runs

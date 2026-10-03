@@ -17,6 +17,7 @@ dev = [
     "pyright",
     "pytest-timeout",
     "pytest-xdist",
+    "pyyaml",
 ]
 
 [tool.ruff]
