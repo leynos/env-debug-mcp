@@ -21,7 +21,9 @@ Markdown follows the estate's `markdown-formatting-baseline` rule.
   is staged.
 - `.markdownlint-cli2.jsonc` carries the canonical markdownlint configuration.
   Keep its `config` entries and `ignores` globs; add repository-specific rules
-  or globs beside them.
+  or globs beside them. `"gitignore": true` makes markdownlint-cli2 skip
+  Git-ignored files, which it does not do by default, so `make fmt`'s `--fix`
+  cannot rewrite a file mdtablefix left alone.
 - CI installs mdtablefix 0.6.1 with the shared `install-mdtablefix` action
   before `make check-fmt`, and the `markdownlint` workflow lints `**/*.md` with
   the pinned `DavidAnson/markdownlint-cli2-action`.
@@ -49,7 +51,9 @@ unformatted Markdown file that is tracked, one that is untracked, and one that
 is ignored, to show that `make check-fmt` refuses the first two and not the
 third, and that `make fmt` wraps the first two and leaves the third alone.
 Those tests are skipped locally when `mdtablefix` is not installed, and fail
-when `CI` is set, so CI cannot stop running them.
+when `CI` is set, so CI cannot stop running them. The `make fmt` test also runs
+the real `markdownlint-cli2` with the repository's own configuration, which CI
+installs at a pinned version before the tests.
 
 ## Python formatting and linting
 

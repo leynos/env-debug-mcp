@@ -31,6 +31,18 @@ SHARED_FLAGS = (
 INSTALL_ACTION = "leynos/shared-actions/.github/actions/install-mdtablefix@"
 LINT_ACTION = "DavidAnson/markdownlint-cli2-action@"
 MINIMUM_VERSION = (0, 6, 1)
+LINTER_VERSION = "0.20.0"
+REQUIRED_IGNORES = (
+    "**/.venv/**",
+    ".node_modules/**",
+    "**/node_modules/**",
+    "**/target/**",
+    ".terraform/**",
+    ".uv-cache/**",
+    "CRUSH.md",
+    ".vtcode/**",
+    "memories/**",
+)
 CANONICAL_CONFIG: dict[str, typ.Any] = {
     "MD004": {"style": "dash"},
     "MD010": {"code_blocks": False},
@@ -153,18 +165,41 @@ LONG_PARAGRAPH = (
 )
 
 
-def _real_mdtablefix() -> str:
-    """Return the path of a real mdtablefix, or skip when it is not installed.
+def _real_tool(name: str) -> str:
+    """Return the path of a real tool, or skip when it is not installed.
 
-    CI installs it before the tests run, so there a missing tool is a failure,
-    never a skip that would let these tests silently stop running.
+    CI installs each tool before the tests run, so there a missing tool is a
+    failure, never a skip that would let these tests silently stop running.
     """
-    found = shutil.which("mdtablefix")
+    found = shutil.which(name)
     if found is None and os.environ.get("CI"):
-        pytest.fail("mdtablefix must be installed in CI to run the end-to-end tests")
+        pytest.fail(f"{name} must be installed in CI to run the end-to-end tests")
     if found is None:
-        pytest.skip("mdtablefix is not installed")
+        pytest.skip(f"{name} is not installed")
     return found
+
+
+def _real_linter(tmp_path: Path) -> Path:
+    """Return a real markdownlint-cli2: an installed one, or a pinned one via npx.
+
+    The workflow gate for this repository forbids installing the linter from a
+    shell step, so CI has none installed. A wrapper then runs the pinned release
+    through npx, which the runner provides. With neither, the test skips locally
+    and fails under `CI`.
+    """
+    found = shutil.which("markdownlint-cli2")
+    if found is not None:
+        return Path(found)
+    npx = shutil.which("npx")
+    if npx is None:
+        return Path(_real_tool("markdownlint-cli2"))
+    wrapper = tmp_path / "markdownlint-cli2"
+    wrapper.write_text(
+        f'#!/bin/sh\nexec "{npx}" --yes markdownlint-cli2@{LINTER_VERSION} "$@"\n',
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    return wrapper
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -181,29 +216,47 @@ def _markdown_repo(tmp_path: Path) -> Path:
     """Build a Git repository with one unformatted Markdown file in each state.
 
     `tracked.md` is staged, `untracked.md` is neither staged nor ignored, and
-    `ignored.md` is covered by `.gitignore`. All three hold the same long line.
+    `ignored.md` is covered by `.gitignore`. All three hold the same long line,
+    and `ignored.md` also has extra blank lines, which `markdownlint-cli2 --fix`
+    removes, so a linter that reaches it can be seen to have rewritten it. The
+    repository's own markdownlint configuration is copied in, since whether the
+    linter honours `.gitignore` is decided there.
     """
     repo = tmp_path / "repo"
     repo.mkdir()
     shutil.copy(ROOT / "Makefile", repo / "Makefile")
     (repo / ".gitignore").write_text("ignored.md\n", encoding="utf-8")
-    for name in ("tracked.md", "untracked.md", "ignored.md"):
+    shutil.copy(ROOT / ".markdownlint-cli2.jsonc", repo / ".markdownlint-cli2.jsonc")
+    for name in ("tracked.md", "untracked.md"):
         (repo / name).write_text(f"# Title\n\n{LONG_PARAGRAPH}", encoding="utf-8")
+    (repo / "ignored.md").write_text(
+        f"# Title\n\n\n\n{LONG_PARAGRAPH}", encoding="utf-8"
+    )
     _git(repo, "init", "--quiet")
-    _git(repo, "add", ".gitignore", "Makefile", "tracked.md")
+    _git(
+        repo, "add", ".gitignore", ".markdownlint-cli2.jsonc", "Makefile", "tracked.md"
+    )
     return repo
 
 
 def _make_in(
-    repo: Path, target: str, tmp_path: Path
+    repo: Path, target: str, tmp_path: Path, *, real_linter: bool = False
 ) -> subprocess.CompletedProcess[str]:
-    """Run `make <target>` with real ruff and mdtablefix and a no-op linter."""
-    mdtablefix = _real_mdtablefix()
+    """Run `make <target>` with real ruff and mdtablefix.
+
+    The Markdown linter is a no-op stub unless `real_linter` is set, in which
+    case the real `markdownlint-cli2` runs and the ambient `PATH` is kept so its
+    runtime is found.
+    """
+    mdtablefix = _real_tool("mdtablefix")
     ruff = shutil.which("ruff")
     assert ruff, "ruff must be installed to run these tests"
-    linter = tmp_path / "markdownlint-cli2"
-    linter.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    linter.chmod(0o755)
+    if real_linter:
+        linter = _real_linter(tmp_path)
+    else:
+        linter = tmp_path / "markdownlint-cli2"
+        linter.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        linter.chmod(0o755)
     make = shutil.which("make")
     assert make, "make must be installed to run these tests"
     path = os.pathsep.join(
@@ -214,6 +267,8 @@ def _make_in(
             "/bin",
         })
     )
+    if real_linter:
+        path = os.environ["PATH"]
     return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
         [make, "--no-print-directory", f"MDLINT={linter}", target],
         cwd=repo,
@@ -253,11 +308,15 @@ def test_check_fmt_ignores_an_unformatted_ignored_file(tmp_path: Path) -> None:
 def test_fmt_rewrites_eligible_files_and_leaves_ignored_ones_alone(
     tmp_path: Path,
 ) -> None:
-    """`make fmt` wraps tracked and untracked files, after which the check passes."""
+    """`make fmt` wraps tracked and untracked files, after which the check passes.
+
+    The real linter runs, so an ignored file the linter would otherwise reach
+    with `--fix` is seen to be left alone.
+    """
     repo = _markdown_repo(tmp_path)
     ignored_before = (repo / "ignored.md").read_text(encoding="utf-8")
 
-    result = _make_in(repo, "fmt", tmp_path)
+    result = _make_in(repo, "fmt", tmp_path, real_linter=True)
 
     assert result.returncode == 0, result.stdout + result.stderr
     for name in ("tracked.md", "untracked.md"):
@@ -267,12 +326,12 @@ def test_fmt_rewrites_eligible_files_and_leaves_ignored_ones_alone(
     assert _make_in(repo, "check-fmt", tmp_path).returncode == 0
 
 
-def _workflow(name: str) -> dict[str, typ.Any]:
+def _workflow(name: str) -> dict[typ.Any, typ.Any]:
     """Return the parsed workflow file."""
     return yaml.safe_load((ROOT / ".github" / "workflows" / name).read_text())
 
 
-def _steps(workflow: dict[str, typ.Any], job: str) -> list[dict[str, typ.Any]]:
+def _steps(workflow: dict[typ.Any, typ.Any], job: str) -> list[dict[str, typ.Any]]:
     """Return the steps of the named job, in order."""
     return workflow["jobs"][job]["steps"]
 
@@ -310,28 +369,72 @@ def test_the_install_action_is_pinned_to_a_commit() -> None:
     assert re.fullmatch(re.escape(INSTALL_ACTION) + r"[0-9a-f]{40}", uses), uses
 
 
+def _lint_workflow() -> dict[typ.Any, typ.Any]:
+    """Return the parsed Markdown lint workflow."""
+    return _workflow("markdownlint.yml")
+
+
 def test_markdown_lint_covers_every_markdown_file_through_with_globs() -> None:
     """The lint action's `with.globs` is `**/*.md`; an `env` key would not set it."""
-    steps = _steps(_workflow("markdownlint.yml"), "markdownlint")
+    steps = _steps(_lint_workflow(), "markdownlint")
     lint = steps[_index_of(steps, LINT_ACTION)]
 
     assert lint["with"]["globs"] == "**/*.md"
 
 
-def test_markdown_lint_workflow_has_a_timeout_and_cancels_superseded_runs() -> None:
-    """The lint job has a ceiling, and a newer push cancels an older PR run."""
-    workflow = _workflow("markdownlint.yml")
+def test_markdown_lint_action_is_pinned_to_a_commit() -> None:
+    """The lint action is referenced by a full commit SHA, so a moved tag is inert."""
+    steps = _steps(_lint_workflow(), "markdownlint")
+    uses = steps[_index_of(steps, LINT_ACTION)]["uses"]
 
-    assert isinstance(workflow["jobs"]["markdownlint"]["timeout-minutes"], int)
-    assert "cancel-in-progress" in workflow["concurrency"], "no concurrency control"
+    assert re.fullmatch(re.escape(LINT_ACTION) + r"[0-9a-f]{40}", uses), uses
+
+
+def test_markdown_lint_runs_on_pushes_to_main_and_pull_requests() -> None:
+    """Both triggers are present, and the push trigger is limited to main."""
+    workflow = _lint_workflow()
+    triggers = workflow["on"] if "on" in workflow else workflow[True]
+
+    assert "pull_request" in triggers, "the lint must run on pull requests"
+    assert triggers["push"] == {"branches": ["main"]}, "push must be limited to main"
+
+
+def test_markdown_lint_has_a_timeout_and_cancels_superseded_pull_requests() -> None:
+    """The lint job has a ceiling, and only pull request runs are cancelled."""
+    workflow = _lint_workflow()
+    timeout = workflow["jobs"]["markdownlint"]["timeout-minutes"]
+    cancel = str(workflow["concurrency"]["cancel-in-progress"])
+
+    assert isinstance(timeout, int)
+    assert timeout > 0, "the timeout must be positive"
+    assert "github.event_name == 'pull_request'" in cancel, cancel
+    assert "github.event.pull_request.number" in workflow["concurrency"]["group"]
+
+
+def _config() -> dict[str, typ.Any]:
+    """Return the parsed markdownlint configuration."""
+    return json.loads((ROOT / ".markdownlint-cli2.jsonc").read_text())
 
 
 def test_markdownlint_config_keeps_the_canonical_rules() -> None:
     """`.markdownlint-cli2.jsonc` keeps every canonical rule setting."""
-    config = json.loads((ROOT / ".markdownlint-cli2.jsonc").read_text())["config"]
+    config = _config()["config"]
 
     for rule, settings in CANONICAL_CONFIG.items():
         assert config.get(rule) == settings, f"{rule} differs from the estate setting"
+
+
+def test_markdownlint_config_keeps_every_required_ignore() -> None:
+    """Each ignore pattern stays, so dependency and scratch trees are not linted."""
+    ignores = set(_config()["ignores"])
+
+    missing = sorted(set(REQUIRED_IGNORES) - ignores)
+    assert not missing, f"required ignore patterns are missing: {missing}"
+
+
+def test_markdownlint_config_honours_gitignore() -> None:
+    """The linter skips Git-ignored files, so `make fmt` cannot rewrite them."""
+    assert _config()["gitignore"] is True
 
 
 def test_ruff_leaves_markdown_to_mdtablefix_and_is_bounded() -> None:
