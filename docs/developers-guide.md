@@ -52,8 +52,10 @@ is ignored, to show that `make check-fmt` refuses the first two and not the
 third, and that `make fmt` wraps the first two and leaves the third alone.
 Those tests are skipped locally when `mdtablefix` is not installed, and fail
 when `CI` is set, so CI cannot stop running them. The `make fmt` test also runs
-the real `markdownlint-cli2` with the repository's own configuration, which CI
-installs at a pinned version before the tests.
+the real `markdownlint-cli2` with the repository's own configuration: an
+installed one if there is one, otherwise release 0.20.0 through `npx`. CI
+installs none, because the estate baseline rule forbids installing the linter
+from a CI shell step, so it takes the `npx` path.
 
 ## Python formatting and linting
 
