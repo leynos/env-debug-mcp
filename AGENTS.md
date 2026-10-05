@@ -139,6 +139,9 @@ When implementing changes, adhere to the following testing procedures:
 ## Markdown Guidance
 
 - Validate Markdown files using `make markdownlint`.
+- Run `make fmt` after Markdown edits. It needs `mdtablefix` 0.6.1 or later and
+  `markdownlint-cli2`; the [developers' guide](docs/developers-guide.md)
+  describes the wiring and gives the install commands.
 - Run `make fmt` after any documentation changes to format all Markdown
   files and fix table markup.
 - Validate Mermaid diagrams in Markdown files by running `make nixie`.
