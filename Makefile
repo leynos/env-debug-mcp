@@ -13,7 +13,7 @@ MDTABLEFIX ?= mdtablefix
 MDTABLEFIX_SELECT = --git --include-untracked
 MDTABLEFIX_RULES = --wrap --renumber --breaks --ellipsis --fences
 
-.PHONY: help all clean build build-release lint fmt check-fmt \
+.PHONY: help all clean build build-release lint fmt check-fmt yamllint actionlint \
         markdownlint nixie test typecheck $(TOOLS) $(VENV_TOOLS)
 
 .DEFAULT_GOAL := all
@@ -71,7 +71,7 @@ check-fmt: ruff $(MDTABLEFIX) ## Verify formatting
 	ruff format --check
 	$(MDTABLEFIX) --check $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
 
-lint: ruff ## Run linters
+lint: ruff yamllint actionlint ## Run linters
 	ruff check
 
 typecheck: build ty ## Run typechecking
@@ -87,6 +87,17 @@ nixie: ## Validate Mermaid diagrams
 
 test: build uv $(VENV_TOOLS) ## Run tests
 	$(UV_ENV) uv run pytest -v -n auto
+
+YAMLLINT ?= yamllint
+ACTIONLINT ?= actionlint
+
+# yamllint reads `.yamllint.yml`, which extends `.yamllint-estate.yml`, and
+# resolves that path against the working directory, so it runs from the root.
+yamllint: ## Lint every tracked YAML file strictly
+	git ls-files -z '*.yml' '*.yaml' | xargs -0 -r $(YAMLLINT) --strict --
+
+actionlint: ## Lint the GitHub Actions workflows, including their shell scripts
+	$(ACTIONLINT)
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | \
