@@ -369,6 +369,21 @@ def test_the_install_action_is_pinned_to_a_commit() -> None:
     assert re.fullmatch(re.escape(INSTALL_ACTION) + r"[0-9a-f]{40}", uses), uses
 
 
+def test_the_publisher_installs_mdtablefix_before_it_measures_coverage() -> None:
+    """The publisher runs the suite, whose end-to-end tests need mdtablefix."""
+    steps = _steps(_workflow("coverage-main.yml"), "coverage-upload")
+    install = _index_of(steps, INSTALL_ACTION)
+    measure = _index_of(
+        steps, "leynos/shared-actions/.github/actions/generate-coverage@"
+    )
+
+    assert install < measure, "mdtablefix must be installed before coverage runs"
+    pinned = _version(str(steps[install]["with"]["version"]))
+    assert pinned >= MINIMUM_VERSION, f"mdtablefix {pinned} is below the minimum"
+    uses = " ".join(steps[install]["uses"].split())
+    assert re.fullmatch(re.escape(INSTALL_ACTION) + r"[0-9a-f]{40}", uses), uses
+
+
 def _lint_workflow() -> dict[typ.Any, typ.Any]:
     """Return the parsed Markdown lint workflow."""
     return _workflow("markdownlint.yml")
