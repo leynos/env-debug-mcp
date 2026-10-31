@@ -1,0 +1,5 @@
+repository = "leynos/env-debug-mcp"
+
+# What the ratchet baseline measures: the package, not its tests.
+[selection]
+python-source = "./env_debug_mcp"
