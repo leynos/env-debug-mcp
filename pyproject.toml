@@ -18,6 +18,7 @@ dev = [
     "pytest-timeout",
     "pytest-xdist",
     "pyyaml",
+    "interrogate",
 ]
 
 [tool.ruff]
