@@ -82,6 +82,16 @@ named `uv`. A Git-sourced tool that is not cached yet needs uv 0.11.28 or
 newer; with an older uv, running the tool once with `uvx` warms the cache.
 `uv.lock` changes only through a manual `uv lock`; the gates never change it.
 
+## Docstring coverage
+
+`make lint` first runs `make interrogate`, which needs `uv` and fails on any
+Python definition under `env_debug_mcp`, `tests` and `scripts` without a
+docstring. It also fails on any `MISSED` row, because interrogate rounds its
+percentage to one decimal and so passes a lone gap. `scripts/uv_gate.py` is the
+vendored shared-actions helper; it is not edited here, and it ships with
+complete docstrings. Add a new Python directory to `INTERROGATE_TARGETS`;
+`tests/test_interrogate_gate.py` asserts the wiring.
+
 ## CodeScene coverage publication
 
 Main owns CodeScene (CV-005). Nothing a pull request can start talks to
