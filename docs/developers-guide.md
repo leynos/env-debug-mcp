@@ -85,12 +85,15 @@ newer; with an older uv, running the tool once with `uvx` warms the cache.
 ## Docstring coverage
 
 `make lint` first runs `make interrogate`, which needs `uv` and fails on any
-Python definition under `env_debug_mcp`, `tests` and `scripts` without a
-docstring. It also fails on any `MISSED` row, because interrogate rounds its
-percentage to one decimal and so passes a lone gap. `scripts/uv_gate.py` is the
-vendored shared-actions helper; it is not edited here, and it ships with
-complete docstrings. Add a new Python directory to `INTERROGATE_TARGETS`;
-`tests/test_interrogate_gate.py` asserts the wiring.
+Python definition it scans under `env_debug_mcp`, `tests` and `scripts` without
+a docstring. It also fails on any `MISSED` row, because interrogate rounds its
+percentage to one decimal and so passes a lone gap. Interrogate leaves out
+`setup.py`, `docs` and `build` by default when it walks a directory, so
+`tests/test_interrogate_gate.py` fails if a tracked Python file sits under one
+of those names inside a target. `scripts/uv_gate.py` is the vendored
+shared-actions helper; it is not edited here, and it ships with complete
+docstrings. Add a new Python directory to `INTERROGATE_TARGETS`; the same test
+asserts the wiring.
 
 ## CodeScene coverage publication
 

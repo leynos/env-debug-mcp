@@ -15,6 +15,7 @@ Run via ``make test``.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - runs git and make with fixed argv
@@ -86,13 +87,13 @@ def test_the_tool_is_pinned_and_run_through_uv() -> None:
     """An unpinned tool could change the verdict with no repository change."""
     assert _variable("INTERROGATE_VERSION") == "1.7.0"
     command = _variable("INTERROGATE")
+    assert "--from 'interrogate==$(INTERROGATE_VERSION)'" in command, "pin the tool"
     if re.search(r"^UV_GATE\s*[:?]?=", _makefile_text(), re.MULTILINE):
         assert "$(UV_GATE) tool" in command, "reach uv through the vendored helper"
         return
     assert re.search(r"(\$\(UV\)|\buv) tool run\b", command), "run via uv tool run"
     if re.search(r"^UV\s*[:?]?=", _makefile_text(), re.MULTILINE):
         assert "$(UV) tool run" in command, "honour the configured $(UV) executable"
-    assert "--from 'interrogate==$(INTERROGATE_VERSION)'" in command
 
 
 def test_the_flags_demand_a_full_exact_report() -> None:
@@ -144,6 +145,25 @@ def test_ci_installs_uv_before_it_runs_make_lint() -> None:
     assert min(uv) < lint[0], "CI sets up uv after make lint"
 
 
+_MAKE_STATE = frozenset({"MAKEFLAGS", "MFLAGS", "MAKELEVEL", "MAKEOVERRIDES"})
+# Interrogate leaves these out when it walks a directory (its `--exclude` default).
+_DEFAULT_EXCLUDES = frozenset({"setup.py", "docs", "build"})
+
+
+def test_no_tracked_file_hides_behind_a_default_exclusion() -> None:
+    """A tracked file interrogate skips by default would never be measured."""
+    targets = [Path(t) for t in _variable("INTERROGATE_TARGETS").split()]
+    hidden = [
+        name
+        for name in _tracked("*.py", "*.pyi")
+        for target in targets
+        if Path(name).is_relative_to(target)
+        and Path(name) != target
+        and _DEFAULT_EXCLUDES & set(Path(name).relative_to(target).parts)
+    ]
+    assert not hidden, f"interrogate skips these by default: {hidden}"
+
+
 def _run_target(tmp_path: Path, script: str) -> subprocess.CompletedProcess[str]:
     """Run `make interrogate` with the tool replaced by a stub script."""
     stub = tmp_path / "stub.sh"
@@ -155,11 +175,19 @@ def _run_target(tmp_path: Path, script: str) -> subprocess.CompletedProcess[str]
     stub.chmod(0o755)
     make = shutil.which("make")
     assert make
+    # A parent Make's flags or a caller's INTERROGATE_* overrides would change
+    # what the stub receives, so the run starts from a clean environment.
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if name not in _MAKE_STATE and not name.startswith("INTERROGATE")
+    }
     return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed argv
         [make, "-C", str(ROOT), "interrogate", f"INTERROGATE={stub}"],
         capture_output=True,
         text=True,
         check=False,
+        env=environment,
     )
 
 
