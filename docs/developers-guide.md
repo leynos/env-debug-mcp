@@ -88,12 +88,13 @@ newer; with an older uv, running the tool once with `uvx` warms the cache.
 Python definition it scans under `env_debug_mcp`, `tests` and `scripts` without
 a docstring. It also fails on any `MISSED` row, because interrogate rounds its
 percentage to one decimal and so can pass a lone gap in a sufficiently large
-codebase. Interrogate 1.7.0 skips any path under a target whose name begins with
-`.tox`, `.venv`, `venv`, `.git` or `.hg`, so `tests/test_interrogate_gate.py`
-fails if a tracked Python file sits under such a name inside a target.
-`scripts/uv_gate.py` is the vendored shared-actions helper; it is not edited
-here, and it ships with complete docstrings. Add a new Python directory to
-`INTERROGATE_TARGETS`; the same test asserts the wiring.
+codebase. Interrogate 1.7.0 skips a path whose first component below a target
+begins with `.tox`, `.venv`, `venv`, `.git` or `.hg`, so
+`tests/test_interrogate_gate.py` fails if a tracked Python file sits at such a
+name directly under a target. `scripts/uv_gate.py` is the vendored
+shared-actions helper; it is not edited here, and it ships with complete
+docstrings. Add a new Python directory to `INTERROGATE_TARGETS`; the same test
+asserts the wiring.
 
 ## CodeScene coverage publication
 
