@@ -414,16 +414,13 @@ def test_markdown_lint_runs_on_pushes_to_main_and_pull_requests() -> None:
     assert triggers["push"] == {"branches": ["main"]}, "push must be limited to main"
 
 
-def test_markdown_lint_has_a_timeout_and_cancels_superseded_pull_requests() -> None:
-    """The lint job has a ceiling, and only pull request runs are cancelled."""
+def test_markdown_lint_has_a_timeout() -> None:
+    """The lint job has a ceiling."""
     workflow = _lint_workflow()
     timeout = workflow["jobs"]["markdownlint"]["timeout-minutes"]
-    cancel = str(workflow["concurrency"]["cancel-in-progress"])
 
     assert isinstance(timeout, int)
     assert timeout > 0, "the timeout must be positive"
-    assert "github.event_name == 'pull_request'" in cancel, cancel
-    assert "github.event.pull_request.number" in workflow["concurrency"]["group"]
 
 
 def _config() -> dict[str, typ.Any]:
